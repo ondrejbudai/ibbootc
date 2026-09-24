@@ -433,7 +433,7 @@ def convert(work):
 
 def boot(work):
     disk = find_artifact(work / "qcow2", ".qcow2")
-    command = ["qemu-system-x86_64", "-snapshot", "-machine", "q35", "-accel", "tcg",
+    command = ["qemu-system-x86_64", "-snapshot", "-machine", "q35", "-accel", "kvm",
                "-m", "3072", "-smp", "2", "-nographic", "-serial", "mon:stdio",
                "-drive", f"file={disk},format=qcow2,if=virtio"]
     env = os.environ.copy()

@@ -256,5 +256,20 @@ image_types:
                 ibbootc.read_definition(definition)
 
 
+class BootTests(unittest.TestCase):
+    def test_boot_uses_kvm_acceleration(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary)
+            qcow2_directory = work / "qcow2"
+            qcow2_directory.mkdir()
+            (qcow2_directory / "test.qcow2").touch()
+
+            with patch.object(ibbootc, "run") as run_mock:
+                ibbootc.boot(work)
+
+        command = run_mock.call_args.args[0]
+        self.assertEqual(command[command.index("-accel") + 1], "kvm")
+
+
 if __name__ == "__main__":
     unittest.main()

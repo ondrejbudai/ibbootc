@@ -24,7 +24,8 @@ Fedora 44 x86_64 with `image-builder`, `osbuild`, `rpm-build`,
 `createrepo_c`, `python3-pyyaml`, `skopeo`, `qemu-img`, and
 `qemu-system-x86_64`. The user needs passwordless `sudo` for Image Builder
 and Skopeo. The build downloads packages and needs several GiB of free disk
-space. QEMU uses TCG in this environment because `/dev/kvm` is unavailable.
+space. The boot test uses QEMU's KVM accelerator, so the user running it needs
+access to `/dev/kvm`.
 
 ## Run
 
@@ -36,8 +37,8 @@ python3 ibbootc.py convert          # import archive with skopeo, then qcow2
 python3 ibbootc.py boot             # interactive serial QEMU console
 ```
 
-The `boot` command uses QEMU's temporary snapshot mode, so guest changes made
-during that test do not modify the qcow2 artifact.
+The `boot` command uses KVM acceleration and QEMU's temporary snapshot mode,
+so guest changes made during that test do not modify the qcow2 artifact.
 
 `python3 ibbootc.py build` runs both build steps. The example user is `poc`
 with password `poc`; change the example password before using the artifact
