@@ -30,6 +30,12 @@ image_types:
       default_target: multi-user.target
       kernel_options: [console=tty0, "console=ttyS0,115200n8"]
       install_weak_deps: false
+      files:
+        - path: /usr/lib/ostree/prepare-root.conf
+          mode: 420 # Decimal fs.FileMode value for 0644.
+          data: |
+            [composefs]
+            enabled = yes
     package_sets:
       os:
         - include:
@@ -84,10 +90,6 @@ blueprint_config:
 
 extensions:
   files:
-    - source: files/prepare-root.conf
-      sha256: 719197dd94aed1f5849da73be71984ffd3aaf702d80fc98cbda737f17790fe77
-      destination: /usr/lib/ostree/prepare-root.conf
-      mode: "0644"
     - source: files/demo-message.txt
       sha256: b95f44fa2028b631f9fffeab73c58c1ed37d854efecdeca1ba37801dfe9490b6
       destination: /etc/ibbootc-demo

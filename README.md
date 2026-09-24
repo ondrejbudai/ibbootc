@@ -14,6 +14,11 @@ Image Builder `distros` and `image_types` sections. `ibbootc.py` adds:
   SHA-256 checksums;
 - `extensions.scripts`: inline Bash run during image construction.
 
+The composefs setting uses the image definition's native `image_config.files`
+field at `/usr/lib/ostree/prepare-root.conf`; it is written directly by
+OSBuild. The generated RPM remains for local extension files and
+post-transaction scripts.
+
 Image Builder 83 does not ship a Fedora 44 `iot-bootable-container` image
 type. The script splits the one-file definition into the YAML tree accepted
 by Image Builder's hidden `--force-defs-dir` flag.
@@ -91,14 +96,15 @@ the `altfiles` source to resolve them; without the module, serial login as
 `poc` fails. The image also includes `rpm-ostree` and `composefs`; the OSTree
 deployment is mounted with composefs during boot.
 
-The generated RPM owns each extra file. Its `%posttrans` calls one generated
-Bash script containing the inline snippets in listed order. The wrapper
-puts only this RPM in the final blueprint package transaction; place all
-other packages in `image_types.<type>.package_sets.os`. That makes the
-scripts run after the other RPM transactions and their scriptlets. Scripts
-run in the image build root, without a running systemd or host device access.
-The installed runner remains under `/usr/libexec/ibbootc/posttrans.sh` so its
-contents can be inspected in the image.
+The generated RPM owns files listed under `extensions.files`. Its `%posttrans`
+calls one generated Bash script containing the inline snippets in listed
+order. The wrapper puts only this RPM in the final blueprint package
+transaction; place all other packages in
+`image_types.<type>.package_sets.os`. That makes the scripts run after the
+other RPM transactions and their scriptlets. Scripts run in the image build
+root, without a running systemd or host device access. The installed runner
+remains under `/usr/libexec/ibbootc/posttrans.sh` so its contents can be
+inspected in the image.
 
 ## Packages used during conversion
 
@@ -113,7 +119,6 @@ generate BIOS and EFI bootupd metadata before conversion.
 The conversion uses `--bootc-default-fs ext4`, as Fedora bootc does not
 provide a default root filesystem in this Image Builder release. The
 container is installed to qcow2 through Image Builder's bootc/OSTree path.
-The pinned `files/prepare-root.conf` supplies the OSTree configuration that
-`bootc install` expects. `composefs.enabled = yes` requires composefs for the
-booted deployment instead of silently falling back to the classic OSTree
-layout.
+The image definition writes `/usr/lib/ostree/prepare-root.conf` with
+`composefs.enabled = yes`, requiring composefs for the booted deployment
+instead of silently falling back to the classic OSTree layout.
