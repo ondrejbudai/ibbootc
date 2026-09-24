@@ -23,10 +23,61 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
-            createrepo-c podman python3-yaml rpm skopeo
+            createrepo-c podman python3-yaml qemu-system-x86 rpm skopeo
 
       - name: Build bootc container and qcow2 disk
         run: sudo python3 ibbootc.py build --image-builder-container
+
+      - name: Boot qcow2 before publishing
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          disks=(work/qcow2/*.qcow2)
+          if (( ${#disks[@]} != 1 )); then
+            echo "Expected one qcow2 disk under work/qcow2; found ${#disks[@]}" >&2
+            exit 1
+          fi
+
+          disk="${disks[0]}"
+          sudo chmod a+r "$disk"
+          qemu_tmpdir="$(mktemp -d /tmp/ibbootc-qemu.XXXXXX)"
+          boot_log="$qemu_tmpdir/serial.log"
+          touch "$boot_log"
+          TMPDIR="$qemu_tmpdir" qemu-system-x86_64 \
+            -snapshot \
+            -machine q35 \
+            -accel tcg,thread=multi \
+            -m 3072 \
+            -smp 2 \
+            -display none \
+            -serial "file:$boot_log" \
+            -monitor none \
+            -no-reboot \
+            -drive "file=$disk,format=qcow2,if=virtio" &
+          qemu_pid=$!
+          cleanup() {
+            kill "$qemu_pid" 2>/dev/null || true
+            wait "$qemu_pid" 2>/dev/null || true
+            rm -rf "$qemu_tmpdir"
+          }
+          trap cleanup EXIT
+
+          deadline=$((SECONDS + 300))
+          until grep -Fq 'login:' "$boot_log"; do
+            if ! kill -0 "$qemu_pid" 2>/dev/null; then
+              tail -n 120 "$boot_log"
+              echo "QEMU exited before the guest reached its serial login prompt" >&2
+              exit 1
+            fi
+            if (( SECONDS >= deadline )); then
+              tail -n 120 "$boot_log"
+              echo "Guest did not reach its serial login prompt within 300 seconds" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          tail -n 40 "$boot_log"
+          echo "Guest reached its serial login prompt"
 
       - name: Set GHCR image tags
         id: image
@@ -80,7 +131,6 @@ jobs:
             echo "Expected one qcow2 disk under work/qcow2; found ${#disks[@]}" >&2
             exit 1
           fi
-          sudo chmod a+r "${disks[0]}"
           oras attach \
             --artifact-type application/vnd.ibbootc.disk.v1 \
             --annotation "org.opencontainers.image.title=$(basename "${disks[0]}")" \

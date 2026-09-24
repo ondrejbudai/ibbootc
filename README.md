@@ -52,9 +52,11 @@ so guest changes made during that test do not modify the qcow2 artifact.
 ## GitHub Actions and GHCR
 
 The `Build bootc image` workflow runs on every push and can also be started
-manually from the Actions tab. It builds through the upstream Image Builder
-container and publishes the bootc image to `ghcr.io/<owner>/ibbootc` with a
-`sha-<commit>` tag. Builds from `main` also update `latest`.
+manually from the Actions tab. Before publishing, it boots the generated qcow2
+with QEMU's software emulator and waits up to five minutes for the serial login
+prompt. It builds through the upstream Image Builder container and publishes
+the bootc image to `ghcr.io/<owner>/ibbootc` with a `sha-<commit>` tag. Builds
+from `main` also update `latest`.
 
 The qcow2 disk is attached to the matching image as an OCI artifact. Find its
 digest with ORAS, then pull it by digest:
