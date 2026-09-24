@@ -49,6 +49,24 @@ used.
 The `boot` command uses KVM acceleration and QEMU's temporary snapshot mode,
 so guest changes made during that test do not modify the qcow2 artifact.
 
+## GitHub Actions and GHCR
+
+The `Build bootc image` workflow runs on every push and can also be started
+manually from the Actions tab. It builds through the upstream Image Builder
+container and publishes the bootc image to `ghcr.io/<owner>/ibbootc` with a
+`sha-<commit>` tag. Builds from `main` also update `latest`.
+
+The qcow2 disk is attached to the matching image as an OCI artifact. Find its
+digest with ORAS, then pull it by digest:
+
+```sh
+oras discover ghcr.io/<owner>/ibbootc:sha-<commit>
+oras pull ghcr.io/<owner>/ibbootc@sha256:<disk-artifact-digest>
+```
+
+The artifact is marked as `application/vnd.ibbootc.disk.v1` and contains the
+original `.qcow2` file.
+
 For the end-to-end check, log in on the serial console as `poc` (password
 `poc`) and run:
 
