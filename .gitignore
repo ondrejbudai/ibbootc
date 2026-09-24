@@ -1,0 +1,16 @@
+# Generated images, manifests, RPMs, repositories, and build logs
+/work/
+
+# Python caches and local tooling
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+*.egg-info/
+/build/
+/dist/

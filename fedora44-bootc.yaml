@@ -1,0 +1,96 @@
+# One-file Image Builder definition plus local payload extensions.
+distros:
+  - name: fedora-44
+    distro_like: fedora
+    os_version: "44"
+    release_version: "44"
+    module_platform_id: platform:f44
+    product: Fedora
+    default_fs_type: ext4
+    defs_path: fedora-44
+    runner:
+      name: org.osbuild.fedora44
+    image_config:
+      default:
+        locale: C.UTF-8
+        timezone: UTC
+        default_kernel: kernel-core
+
+image_types:
+  bootc-container:
+    filename: bootc-container.tar
+    mime_type: application/x-tar
+    image_func: bootable_container
+    exports: [ostree-encapsulate]
+    ostree:
+      ref: fedora/44/x86_64/bootc
+    platforms:
+      - arch: x86_64
+    image_config:
+      default_target: multi-user.target
+      kernel_options: [console=tty0, "console=ttyS0,115200n8"]
+      install_weak_deps: false
+    package_sets:
+      os:
+        - include:
+            # Runtime packages for the bootable Fedora image.
+            - basesystem
+            - bash
+            - bootc
+            - bootupd
+            - coreutils
+            - fedora-release
+            - filesystem
+            - glibc-minimal-langpack
+            - grub2-efi-x64
+            - grub2-pc
+            - grub2-tools
+            - kernel-core
+            - NetworkManager
+            # OSTree stores local users in /usr/lib/passwd. The NSS policy
+            # below selects altfiles for account lookups, so this module is
+            # required for the configured poc login to work at runtime.
+            - nss-altfiles
+            - ostree
+            - podman
+            - rpm-ostree
+            - selinux-policy-targeted
+            - shim-x64
+            - systemd
+            - systemd-udev
+            # Conversion support for image-builder's qcow2 pipeline: the
+            # runner needs python3, filesystem creation needs dosfstools and
+            # e2fsprogs, and export needs qemu-img. The one-image constraint
+            # keeps these packages in the final runtime image too.
+            - dosfstools
+            - e2fsprogs
+            - python3
+            - qemu-img
+    blueprint:
+      supported_options:
+        - packages
+        - customizations.user
+        - customizations.group
+        - customizations.kernel.append
+
+blueprint_config:
+  customizations:
+    user:
+      - name: poc
+        password: poc
+        groups: [wheel]
+
+extensions:
+  files:
+    - source: files/prepare-root.conf
+      sha256: 04821efdfaee2d9a345cfb3c77327575a8d6457f4a6a873d0ed3f8697bac4534
+      destination: /usr/lib/ostree/prepare-root.conf
+      mode: "0644"
+    - source: files/demo-message.txt
+      sha256: b95f44fa2028b631f9fffeab73c58c1ed37d854efecdeca1ba37801dfe9490b6
+      destination: /etc/ibbootc-demo
+      mode: "0644"
+  scripts:
+    - |
+      test -f /etc/ibbootc-demo
+      printf 'posttrans ran\n' > /etc/ibbootc-posttrans
