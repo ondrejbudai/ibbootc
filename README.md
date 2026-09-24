@@ -20,12 +20,15 @@ by Image Builder's hidden `--force-defs-dir` flag.
 
 ## Requirements
 
-Fedora 44 x86_64 with `image-builder`, `osbuild`, `rpm-build`,
-`createrepo_c`, `python3-pyyaml`, `skopeo`, `qemu-img`, and
-`qemu-system-x86_64`. The user needs passwordless `sudo` for Image Builder
-and Skopeo. The build downloads packages and needs several GiB of free disk
-space. The boot test uses QEMU's KVM accelerator, so the user running it needs
-access to `/dev/kvm`.
+Fedora 44 x86_64 with `image-builder` and `osbuild` for the default mode, or
+`podman` for the upstream container mode, plus `rpm-build`, `createrepo_c`,
+`python3-pyyaml`, `skopeo`, `qemu-img`, and `qemu-system-x86_64`. The user
+needs passwordless `sudo` for Image Builder or Podman and for Skopeo. The
+container mode runs `ghcr.io/osbuild/image-builder-cli:latest` with Podman's
+rootful storage mounted so the conversion step can use the image imported by
+Skopeo. The build downloads packages and needs several GiB of free disk space.
+The boot test uses QEMU's KVM accelerator, so the user running it needs access
+to `/dev/kvm`.
 
 ## Run
 
@@ -36,6 +39,12 @@ python3 ibbootc.py build-container  # RPM, repo, then bootc OCI archive
 python3 ibbootc.py convert          # import archive with skopeo, then qcow2
 python3 ibbootc.py boot             # interactive serial QEMU console
 ```
+
+Add `--image-builder-container` to `build-container`, `convert`, or `build` to
+run Image Builder from its upstream container with Podman. For example,
+`python3 ibbootc.py build --image-builder-container` uses the container for
+both build steps; without the flag the locally installed `image-builder` is
+used.
 
 The `boot` command uses KVM acceleration and QEMU's temporary snapshot mode,
 so guest changes made during that test do not modify the qcow2 artifact.

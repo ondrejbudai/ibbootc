@@ -22,6 +22,9 @@ from yaml.nodes import MappingNode, SequenceNode
 PAYLOAD_NAME = "ibbootc-payload"
 CONTAINER_REF = "localhost/ibbootc:poc"
 POSTTRANS_PATH = "/usr/libexec/ibbootc/posttrans.sh"
+IMAGE_BUILDER_CONTAINER = "ghcr.io/osbuild/image-builder-cli:latest"
+IMAGE_BUILDER_CONTAINER_WORKDIR = Path("/work")
+CONTAINERS_STORAGE = "/var/lib/containers/storage"
 
 
 class UniqueKeyLoader(yaml.SafeLoader):
@@ -404,28 +407,68 @@ def find_artifact(path, suffix):
     return matches[0]
 
 
-def build_container(definition, work):
+def image_builder_path(path, work, *, use_container):
+    if not use_container:
+        return str(path)
+    relative = Path(path).resolve().relative_to(Path(work).resolve())
+    return str(IMAGE_BUILDER_CONTAINER_WORKDIR / relative)
+
+
+def run_image_builder(work, arguments, *, use_container=False, share_container_storage=False):
+    if use_container:
+        work = Path(work).resolve()
+        command = [
+            "podman", "run", "--rm", "--privileged",
+            "--volume", f"{work}:{IMAGE_BUILDER_CONTAINER_WORKDIR}:rw",
+        ]
+        if share_container_storage:
+            command.extend([
+                "--volume",
+                f"{CONTAINERS_STORAGE}:{CONTAINERS_STORAGE}:rw",
+            ])
+        command.extend([IMAGE_BUILDER_CONTAINER, *arguments])
+    else:
+        command = ["image-builder", *arguments]
+    run(command, root=True)
+
+
+def build_container(definition, work, *, image_builder_container=False):
     distro, image_type, defs, blueprint, repo = prepare(definition, work)
     output = work / "container"
     output.mkdir(parents=True, exist_ok=True)
-    run(["image-builder", "build", image_type, "--distro", distro,
-         "--arch", "x86_64", "--force-defs-dir", str(defs),
-         "--extra-repo", repo.as_uri(), "--blueprint", str(blueprint),
-         "--output-dir", str(output), "--with-manifest", "--with-buildlog"], root=True)
+    args = [
+        "build", image_type, "--distro", distro,
+        "--arch", "x86_64",
+        "--force-defs-dir", image_builder_path(defs, work, use_container=image_builder_container),
+        "--extra-repo", Path(image_builder_path(repo, work, use_container=image_builder_container)).as_uri(),
+        "--blueprint", image_builder_path(blueprint, work, use_container=image_builder_container),
+        "--output-dir", image_builder_path(output, work, use_container=image_builder_container),
+        "--with-manifest", "--with-buildlog",
+    ]
+    run_image_builder(work, args, use_container=image_builder_container)
     archive = find_artifact(output, ".tar")
     print(f"Container archive: {archive}")
     return archive
 
 
-def convert(work):
+def convert(work, *, image_builder_container=False):
     archive = find_artifact(work / "container", ".tar")
     run(["skopeo", "copy", f"oci-archive:{archive}",
          f"containers-storage:{CONTAINER_REF}"], root=True)
     output = work / "qcow2"
     output.mkdir(parents=True, exist_ok=True)
-    run(["image-builder", "build", "qcow2", "--bootc-ref", CONTAINER_REF,
-         "--bootc-default-fs", "ext4",
-         "--output-dir", str(output), "--with-manifest", "--with-buildlog"], root=True)
+    args = [
+        "build", "qcow2", "--bootc-ref", CONTAINER_REF,
+        "--bootc-default-fs", "ext4",
+        "--output-dir", image_builder_path(output, work, use_container=image_builder_container),
+        "--with-manifest", "--with-buildlog",
+    ]
+    run_image_builder(
+        work,
+        args,
+        use_container=image_builder_container,
+        share_container_storage=image_builder_container,
+    )
     disk = find_artifact(output, ".qcow2")
     print(f"Bootable disk: {disk}")
     return disk
@@ -469,7 +512,13 @@ def main():
     parser.add_argument("--work", type=Path, default=Path("work"))
     sub = parser.add_subparsers(dest="command", required=True)
     for name in ("pin", "check", "prepare", "build-container", "convert", "build", "boot"):
-        sub.add_parser(name)
+        command_parser = sub.add_parser(name)
+        if name in ("build-container", "convert", "build"):
+            command_parser.add_argument(
+                "--image-builder-container",
+                action="store_true",
+                help="run the upstream Image Builder container with Podman",
+            )
     args = parser.parse_args()
     definition = args.definition.resolve()
     work = args.work.resolve()
@@ -485,12 +534,12 @@ def main():
     elif args.command == "prepare":
         prepare(definition, work)
     elif args.command == "build-container":
-        build_container(definition, work)
+        build_container(definition, work, image_builder_container=args.image_builder_container)
     elif args.command == "convert":
-        convert(work)
+        convert(work, image_builder_container=args.image_builder_container)
     elif args.command == "build":
-        build_container(definition, work)
-        convert(work)
+        build_container(definition, work, image_builder_container=args.image_builder_container)
+        convert(work, image_builder_container=args.image_builder_container)
     elif args.command == "boot":
         boot(work)
 

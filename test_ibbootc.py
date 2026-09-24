@@ -256,6 +256,108 @@ image_types:
                 ibbootc.read_definition(definition)
 
 
+class ImageBuilderTests(unittest.TestCase):
+    def test_build_container_runs_upstream_container_with_workspace_paths(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary) / "work"
+            work.mkdir()
+            defs = work / "defs"
+            defs.mkdir()
+            blueprint = work / "blueprint.json"
+            blueprint.touch()
+            repo = work / "repo"
+            repo.mkdir()
+            output = work / "container"
+
+            def fake_run(command, *, root=False):
+                self.assertTrue(root)
+                self.assertEqual(command[0], "podman")
+                output.mkdir(exist_ok=True)
+                (output / "image.tar").touch()
+
+            with patch.object(
+                ibbootc,
+                "prepare",
+                return_value=("fedora-44", "bootc-container", defs, blueprint, repo),
+            ), patch.object(ibbootc, "run", side_effect=fake_run) as run_mock, redirect_stdout(
+                io.StringIO()
+            ):
+                result = ibbootc.build_container(
+                    Path("definition.yaml"), work, image_builder_container=True
+                )
+
+        work_mount = f"{work.resolve()}:{ibbootc.IMAGE_BUILDER_CONTAINER_WORKDIR}:rw"
+        self.assertEqual(
+            run_mock.call_args.args[0],
+            [
+                "podman", "run", "--rm", "--privileged", "--volume", work_mount,
+                ibbootc.IMAGE_BUILDER_CONTAINER,
+                "build", "bootc-container", "--distro", "fedora-44", "--arch", "x86_64",
+                "--force-defs-dir", "/work/defs",
+                "--extra-repo", "file:///work/repo",
+                "--blueprint", "/work/blueprint.json",
+                "--output-dir", "/work/container", "--with-manifest", "--with-buildlog",
+            ],
+        )
+        self.assertEqual(result, output / "image.tar")
+
+    def test_convert_shares_host_container_storage_with_upstream_container(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary) / "work"
+            archive_dir = work / "container"
+            archive_dir.mkdir(parents=True)
+            archive = archive_dir / "image.tar"
+            archive.touch()
+
+            def fake_run(command, *, root=False):
+                self.assertTrue(root)
+                if command[0] == "podman":
+                    output = work / "qcow2"
+                    output.mkdir(exist_ok=True)
+                    (output / "disk.qcow2").touch()
+
+            with patch.object(ibbootc, "run", side_effect=fake_run) as run_mock, redirect_stdout(
+                io.StringIO()
+            ):
+                result = ibbootc.convert(work, image_builder_container=True)
+
+        self.assertEqual(
+            run_mock.call_args_list[0].args[0],
+            ["skopeo", "copy", f"oci-archive:{archive}", f"containers-storage:{ibbootc.CONTAINER_REF}"],
+        )
+        work_mount = f"{work.resolve()}:{ibbootc.IMAGE_BUILDER_CONTAINER_WORKDIR}:rw"
+        self.assertEqual(
+            run_mock.call_args_list[1].args[0],
+            [
+                "podman", "run", "--rm", "--privileged", "--volume", work_mount,
+                "--volume", f"{ibbootc.CONTAINERS_STORAGE}:{ibbootc.CONTAINERS_STORAGE}:rw",
+                ibbootc.IMAGE_BUILDER_CONTAINER,
+                "build", "qcow2", "--bootc-ref", ibbootc.CONTAINER_REF,
+                "--bootc-default-fs", "ext4", "--output-dir", "/work/qcow2",
+                "--with-manifest", "--with-buildlog",
+            ],
+        )
+        self.assertEqual(result, work / "qcow2" / "disk.qcow2")
+
+    def test_default_image_builder_runner_uses_local_installation(self):
+        with tempfile.TemporaryDirectory() as temporary, patch.object(ibbootc, "run") as run_mock:
+            ibbootc.run_image_builder(Path(temporary), ["build", "qcow2"])
+
+        run_mock.assert_called_once_with(["image-builder", "build", "qcow2"], root=True)
+
+    def test_build_cli_flag_selects_container_for_both_steps(self):
+        with patch("sys.argv", ["ibbootc.py", "build", "--image-builder-container"]), patch.object(
+            ibbootc, "build_container"
+        ) as build_mock, patch.object(ibbootc, "convert") as convert_mock:
+            ibbootc.main()
+
+        work = Path("work").resolve()
+        build_mock.assert_called_once_with(
+            Path("fedora44-bootc.yaml").resolve(), work, image_builder_container=True
+        )
+        convert_mock.assert_called_once_with(work, image_builder_container=True)
+
+
 class BootTests(unittest.TestCase):
     def test_boot_uses_kvm_acceleration(self):
         with tempfile.TemporaryDirectory() as temporary:
