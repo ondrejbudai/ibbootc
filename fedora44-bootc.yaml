@@ -38,6 +38,8 @@ image_types:
             - bash
             - bootc
             - bootupd
+            # The OSTree prepare-root config below requires composefs at boot.
+            - composefs
             - coreutils
             - fedora-release
             - filesystem
@@ -83,7 +85,7 @@ blueprint_config:
 extensions:
   files:
     - source: files/prepare-root.conf
-      sha256: 04821efdfaee2d9a345cfb3c77327575a8d6457f4a6a873d0ed3f8697bac4534
+      sha256: 719197dd94aed1f5849da73be71984ffd3aaf702d80fc98cbda737f17790fe77
       destination: /usr/lib/ostree/prepare-root.conf
       mode: "0644"
     - source: files/demo-message.txt

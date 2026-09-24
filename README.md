@@ -40,6 +40,17 @@ python3 ibbootc.py boot             # interactive serial QEMU console
 The `boot` command uses KVM acceleration and QEMU's temporary snapshot mode,
 so guest changes made during that test do not modify the qcow2 artifact.
 
+For the end-to-end check, log in on the serial console as `poc` (password
+`poc`) and run:
+
+```sh
+rpm-ostree status
+findmnt -T /usr -n -o TARGET,FSTYPE,SOURCE
+```
+
+`rpm-ostree status` should show the active deployment, and `findmnt` should
+show an `overlay` filesystem with source `composefs`.
+
 `python3 ibbootc.py build` runs both build steps. The example user is `poc`
 with password `poc`; change the example password before using the artifact
 outside an isolated test. Output and generated intermediate files are under
@@ -48,7 +59,8 @@ outside an isolated test. Output and generated intermediate files are under
 The runtime package set includes `nss-altfiles` for OSTree account lookups.
 OSTree places image users in `/usr/lib/passwd`, and Fedora's NSS policy uses
 the `altfiles` source to resolve them; without the module, serial login as
-`poc` fails.
+`poc` fails. The image also includes `rpm-ostree` and `composefs`; the OSTree
+deployment is mounted with composefs during boot.
 
 The generated RPM owns each extra file. Its `%posttrans` calls one generated
 Bash script containing the inline snippets in listed order. The wrapper
@@ -73,5 +85,6 @@ The conversion uses `--bootc-default-fs ext4`, as Fedora bootc does not
 provide a default root filesystem in this Image Builder release. The
 container is installed to qcow2 through Image Builder's bootc/OSTree path.
 The pinned `files/prepare-root.conf` supplies the OSTree configuration that
-`bootc install` expects; `composefs.enabled = no` selects the classic OSTree
-layout for this example.
+`bootc install` expects. `composefs.enabled = yes` requires composefs for the
+booted deployment instead of silently falling back to the classic OSTree
+layout.
